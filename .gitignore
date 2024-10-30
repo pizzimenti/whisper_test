@@ -1,0 +1,19 @@
+# Ignore virtual environment folder
+venv/
+
+# Ignore audio recording files
+*.wav
+
+# Ignore Python cache files
+__pycache__/
+*.py[cod]
+
+# Ignore Jupyter notebook checkpoints if you use Jupyter
+.ipynb_checkpoints/
+
+# Ignore VSCode settings (optional, if you use VSCode)
+.vscode/
+
+# Ignore system files (macOS and Linux)
+.DS_Store
+
