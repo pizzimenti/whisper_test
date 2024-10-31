@@ -4,31 +4,30 @@ import torch
 from whisperspeech.pipeline import Pipeline
 import tempfile
 import soundfile as sf
+import warnings
 
 def generate_speech(text):
-    """Generate and play synthesized speech from text using WhisperSpeech with reduced precision and security settings."""
+    """Generate and play synthesized speech from text using WhisperSpeech with smallest models and 48kHz sample rate."""
+
     print("Rendering transcription as speech using WhisperSpeech...")
 
-    # Initialize the WhisperSpeech pipeline with reduced precision for CPU
-    pipe = Pipeline(torch_compile=True)
+       # Suppress specific FutureWarnings and profiler warnings
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    warnings.filterwarnings("ignore", message=".*Profiler function.*")
 
-    # Convert model to reduced precision, use float16 if supported, else bfloat16
-    dtype = torch.float16 if torch.cuda.is_available() or torch.has_cpu_float16 else torch.bfloat16
-    pipe.to(dtype=dtype)
 
-    # Update torch.load settings within the pipeline to enhance security
-    original_torch_load = torch.load  # Save the original torch.load function
-    torch.load = lambda *args, **kwargs: original_torch_load(*args, weights_only=True, **kwargs)
+    # Initialize the WhisperSpeech pipeline with the smallest available models for T2S and S2A
+    pipe = Pipeline(
+        t2s_ref='collabora/whisperspeech:t2s-tiny-en+pl.model',
+        s2a_ref='collabora/whisperspeech:s2a-q4-tiny-en+pl.model',
+        torch_compile=True
+    )
 
-    try:
-        # Generate speech from text
-        audio = pipe.generate(text) if hasattr(pipe, 'generate') else pipe(text)
-    finally:
-        # Restore original torch.load after pipeline execution
-        torch.load = original_torch_load
+    # Generate speech from text
+    audio = pipe.generate(text) if hasattr(pipe, 'generate') else pipe(text)
 
-    # Save the generated speech to a temporary file
+    # Save the generated speech to a temporary file at 48kHz
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio_file:
-        sf.write(temp_audio_file.name, audio, 22050)  # Assuming 22.05 kHz sample rate
-        print("TTS audio generated.")
+        sf.write(temp_audio_file.name, audio, 48000)  # Save at 48kHz
+        print("TTS audio generated at 48kHz.")
         return temp_audio_file.name
