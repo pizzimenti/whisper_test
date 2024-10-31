@@ -1,4 +1,5 @@
 # Ignore virtual environment folders
+whisper_test/
 whisper_env/
 venv/
 env/
