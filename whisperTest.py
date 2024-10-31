@@ -9,6 +9,9 @@ import soundfile as sf
 import queue
 import tempfile
 import functools
+import threading
+import sys
+import time
 
 def list_microphones():
     devices = sd.query_devices()
@@ -18,21 +21,59 @@ def list_microphones():
         print(f"{idx}: {dev['name']}")
     return input_devices
 
-def record_audio(audio_queue, device_index, duration=15, fs=48000):
-    """Records audio from the selected microphone and puts the file path into a queue."""
+def record_audio(audio_queue, device_index, fs=48000):
+    """Records audio from the selected microphone until Enter is pressed."""
     print(f"Recording started at {fs} Hz...")
-    try:
-        audio = sd.rec(int(duration * fs), samplerate=fs, channels=1, dtype='float32', device=device_index)
-        sd.wait()
-        print("Recording complete.")
-        print(f"Audio data shape: {audio.shape}, dtype: {audio.dtype}")
+    audio_data = []
+    recording = threading.Event()
+    recording.set()
+    start_time = time.time()
 
+    def callback(indata, frames, time_info, status):
+        if status:
+            print(f"Recording error: {status}", file=sys.stderr)
+        if recording.is_set():
+            audio_data.append(indata.copy())
+        else:
+            raise sd.CallbackStop()
+
+    # Start input stream
+    stream = sd.InputStream(
+        samplerate=fs,
+        device=device_index,
+        channels=1,
+        dtype='float32',
+        callback=callback
+    )
+
+    # Start the stream in a separate thread
+    with stream:
+        # Start the timer display in a separate thread
+        def display_timer():
+            while recording.is_set():
+                elapsed_time = time.time() - start_time
+                print(f"\rRecording... {elapsed_time:.1f}s", end='')
+                time.sleep(0.1)
+            print("\nRecording stopped.")
+
+        timer_thread = threading.Thread(target=display_timer)
+        timer_thread.start()
+
+        # Wait for user to press Enter
+        input("\nPress Enter to stop recording...\n")
+        recording.clear()
+        timer_thread.join()
+
+    # Concatenate all recorded data
+    if audio_data:
+        audio = np.concatenate(audio_data, axis=0)
+        print(f"Recording complete. Total duration: {audio.shape[0] / fs:.2f}s")
         # Save audio to a temporary WAV file
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio_file:
             sf.write(temp_audio_file.name, audio, fs)
             audio_queue.put(temp_audio_file.name)
-    except Exception as e:
-        print(f"An error occurred during recording: {e}")
+    else:
+        print("No audio data recorded.")
         audio_queue.put(None)
     # Signal that recording is done
     audio_queue.put(None)
