@@ -48,7 +48,7 @@ def play_audio(file_path):
     except Exception as e:
         print(f"An error occurred during playback: {e}")
 
-def transcribe_audio(model_size="tiny", audio_queue=None):
+def transcribe_audio(model_size, audio_queue=None):
     """Transcribes audio data from the queue using the Whisper model."""
     # Override torch.load to suppress the FutureWarning
     original_torch_load = torch.load
@@ -72,8 +72,8 @@ def transcribe_audio(model_size="tiny", audio_queue=None):
         # Use Whisper's load_audio function
         audio = whisper.load_audio(audio_file_path)
 
-        # Transcribe the audio
-        result = model.transcribe(audio, fp16=False)
+        # Transcribe the audio with language set to English
+        result = model.transcribe(audio, fp16=False, language='en')
         print("Transcription:", result["text"])
         transcriptions.append(result["text"])
 
@@ -101,15 +101,34 @@ def main():
         except ValueError:
             print("Please enter a valid integer.")
 
+    # Prompt the user to select the Whisper model
+    # List available models
+    available_models = ["tiny", "base", "small", "medium", "large"]
+    print("\nAvailable Whisper models:")
+    for idx, model_name in enumerate(available_models):
+        print(f"{idx}: {model_name}")
+
+    # Prompt user to select a model
+    while True:
+        try:
+            model_index = int(input("\nEnter the model index to use for transcription: "))
+            if 0 <= model_index < len(available_models):
+                selected_model = available_models[model_index]
+                print(f"Selected model: {selected_model}")
+                break
+            else:
+                print("Invalid model index. Please try again.")
+        except ValueError:
+            print("Please enter a valid integer.")
+
     # Record audio
     audio_queue = queue.Queue()
     record_audio(audio_queue, selected_device_index)
 
-    # Transcribe audio
-    transcribe_audio("tiny", audio_queue)
+    # Transcribe audio using the selected model
+    transcribe_audio(selected_model, audio_queue)
 
     print("Transcription complete.")
 
 if __name__ == "__main__":
     main()
-
