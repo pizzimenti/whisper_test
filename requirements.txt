@@ -1,5 +1,6 @@
 openai-whisper
-sounddevice
 numpy
 torch
 pyperclip
+sounddevice
+soundfile
