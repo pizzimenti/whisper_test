@@ -12,6 +12,7 @@ import functools
 import threading
 import sys
 import time
+from whisperTTS import generate_speech  # Import only the TTS function
 
 def list_microphones():
     devices = sd.query_devices()
@@ -133,8 +134,15 @@ def transcribe_audio(model_sizes, audio_queue=None):
         try:
             pyperclip.copy(last_transcription)
             print("\nLast transcription has been copied to the clipboard.")
+            # Call TTS function with the last transcription
+            text_to_speech(last_transcription)
         except pyperclip.PyperclipException as e:
             print(f"Failed to copy transcription to clipboard: {e}")
+
+def text_to_speech(text):
+    """Calls WhisperSpeech TTS from an external file and plays the result."""
+    tts_file_path = generate_speech(text)
+    play_audio(tts_file_path)
 
 def main():
     # List microphones and allow the user to select one
@@ -189,3 +197,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+        

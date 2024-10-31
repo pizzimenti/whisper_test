@@ -15,7 +15,7 @@ pip install -r requirements.txt
 
 echo "All Python dependencies have been installed."
 echo "The virtual environment 'whisper_env' is activated."
-echo "You can now run your script using 'python whisper_test.py'."
+echo "You can now run your script using 'python whisper_test    .py'."
 
 # Keep the virtual environment activated and provide instructions to run the script
 source whisper_env/bin/activate && zsh
