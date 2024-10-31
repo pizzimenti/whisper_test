@@ -5,4 +5,4 @@ pyperclip
 sounddevice
 soundfile
 git+https://github.com/collabora/whisperspeech.git
-webdataset
+webdataset      
