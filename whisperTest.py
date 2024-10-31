@@ -67,11 +67,12 @@ def record_audio(audio_queue, device_index, fs=48000):
     # Concatenate all recorded data
     if audio_data:
         audio = np.concatenate(audio_data, axis=0)
-        print(f"Recording complete. Total duration: {audio.shape[0] / fs:.2f}s")
+        audio_duration = audio.shape[0] / fs
+        print(f"Recording complete. Total duration: {audio_duration:.2f}s")
         # Save audio to a temporary WAV file
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio_file:
             sf.write(temp_audio_file.name, audio, fs)
-            audio_queue.put(temp_audio_file.name)
+            audio_queue.put((temp_audio_file.name, audio_duration))
     else:
         print("No audio data recorded.")
         audio_queue.put(None)
@@ -89,42 +90,51 @@ def play_audio(file_path):
     except Exception as e:
         print(f"An error occurred during playback: {e}")
 
-def transcribe_audio(model_size, audio_queue=None):
-    """Transcribes audio data from the queue using the Whisper model."""
+def transcribe_audio(model_sizes, audio_queue=None):
+    """Transcribes audio data from the queue using the specified Whisper model(s)."""
     # Override torch.load to suppress the FutureWarning
     original_torch_load = torch.load
     torch.load = functools.partial(torch.load, weights_only=True)
 
-    model = whisper.load_model(model_size)
-
-    # Restore the original torch.load
-    torch.load = original_torch_load
-
     transcriptions = []
     while True:
-        audio_file_path = audio_queue.get()
-        if audio_file_path is None:
+        audio_item = audio_queue.get()
+        if audio_item is None:
             break
+        audio_file_path, audio_duration = audio_item
         print(f"Received audio file: {audio_file_path}")
-
         # Play back the audio before transcription
         play_audio(audio_file_path)
 
         # Use Whisper's load_audio function
         audio = whisper.load_audio(audio_file_path)
 
-        # Transcribe the audio with language set to English
-        result = model.transcribe(audio, fp16=False, language='en')
-        print("Transcription:", result["text"])
-        transcriptions.append(result["text"])
+        for model_size in model_sizes:
+            print(f"\nTranscribing with model '{model_size}'...")
+            start_time = time.time()
+            model = whisper.load_model(model_size)
+            transcription_start = time.time()
+            result = model.transcribe(audio, fp16=False, language='en')
+            transcription_end = time.time()
+            transcription_time = transcription_end - transcription_start
+            coefficient = audio_duration / transcription_time if transcription_time > 0 else 0
+            print(f"Transcription ({model_size}): {result['text']}")
+            print(f"Audio Duration: {audio_duration:.2f}s")
+            print(f"Transcription Time: {transcription_time:.2f}s")
+            print(f"Coefficient of Real-time: {coefficient:.2f}x")
+            transcriptions.append((model_size, result['text']))
 
-    # Copy transcription to clipboard
-    full_transcription = "\n".join(transcriptions)
-    try:
-        pyperclip.copy(full_transcription)
-        print("Transcription has been copied to the clipboard.")
-    except pyperclip.PyperclipException as e:
-        print(f"Failed to copy transcription to clipboard: {e}")
+    # Restore the original torch.load
+    torch.load = original_torch_load
+
+    # Copy the last transcription to clipboard
+    if transcriptions:
+        _, last_transcription = transcriptions[-1]
+        try:
+            pyperclip.copy(last_transcription)
+            print("\nLast transcription has been copied to the clipboard.")
+        except pyperclip.PyperclipException as e:
+            print(f"Failed to copy transcription to clipboard: {e}")
 
 def main():
     # List microphones and allow the user to select one
@@ -144,7 +154,7 @@ def main():
 
     # Prompt the user to select the Whisper model
     # List available models
-    available_models = ["tiny", "base", "small", "medium", "large"]
+    available_models = ["tiny", "base", "small", "medium", "large", "all"]
     print("\nAvailable Whisper models:")
     for idx, model_name in enumerate(available_models):
         print(f"{idx}: {model_name}")
@@ -162,12 +172,18 @@ def main():
         except ValueError:
             print("Please enter a valid integer.")
 
+    # Determine the model sizes to use
+    if selected_model == "all":
+        model_sizes = ["tiny", "base", "small", "medium", "large"]
+    else:
+        model_sizes = [selected_model]
+
     # Record audio
     audio_queue = queue.Queue()
     record_audio(audio_queue, selected_device_index)
 
-    # Transcribe audio using the selected model
-    transcribe_audio(selected_model, audio_queue)
+    # Transcribe audio using the selected model(s)
+    transcribe_audio(model_sizes, audio_queue)
 
     print("Transcription complete.")
 
