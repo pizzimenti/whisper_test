@@ -1,5 +1,8 @@
-# Ignore virtual environment folder
+# Ignore virtual environment folders
+whisper_env/
 venv/
+env/
+*.egg-info/
 
 # Ignore audio recording files
 *.wav
@@ -16,4 +19,3 @@ __pycache__/
 
 # Ignore system files (macOS and Linux)
 .DS_Store
-

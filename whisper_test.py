@@ -1,64 +1,59 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 import whisper
-import pyaudio
-import wave
+import sounddevice as sd
+import numpy as np
+import threading
+import queue
+import pyperclip
 
-# Function to list available audio input devices
-def list_microphones():
-    audio = pyaudio.PyAudio()
-    print("Available audio devices:")
-    for i in range(audio.get_device_count()):
-        device = audio.get_device_info_by_index(i)
-        print(f"Device {i}: {device['name']}")
-    audio.terminate()
-
-# Function to record audio from the selected device
-def record_audio(device_index, output_file="test_audio.wav", record_seconds=15):  # 15 seconds
-    CHUNK = 1024  # Buffer size
-    FORMAT = pyaudio.paInt16  # Audio format
-    CHANNELS = 1  # Mono audio
-    RATE = 48000  # Sample rate
-
-    audio = pyaudio.PyAudio()
-    stream = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True,
-                        input_device_index=device_index, frames_per_buffer=CHUNK)
-    print("Recording...")
-    frames = []
-
-    try:
-        for _ in range(0, int(RATE / CHUNK * record_seconds)):
-            data = stream.read(CHUNK, exception_on_overflow=False)
-            frames.append(data)
-    except Exception as e:
-        print(f"Error during recording: {e}")
-    finally:
-        stream.stop_stream()
-        stream.close()
-        audio.terminate()
-
-    with wave.open(output_file, 'wb') as wf:
-        wf.setnchannels(CHANNELS)
-        wf.setsampwidth(audio.get_sample_size(FORMAT))
-        wf.setframerate(RATE)
-        wf.writeframes(b''.join(frames))
-
+def record_audio(audio_queue, duration=15, fs=16000):
+    """Records audio from the default microphone and puts it into a queue."""
+    print("Recording started...")
+    audio = sd.rec(int(duration * fs), samplerate=fs, channels=1, dtype='float32')
+    sd.wait()  # Wait until recording is finished
     print("Recording complete.")
+    audio_queue.put(audio)
+    # Signal that recording is done
+    audio_queue.put(None)
 
-# Function to transcribe audio using Whisper
-def transcribe_audio(model_size="tiny", input_file="test_audio.wav"):
-    model = whisper.load_model(model_size, device="cpu")
-    print("Transcribing...")
-    result = model.transcribe(input_file, language="en")
-    print("Transcription:", result["text"])
+def transcribe_audio(model_size="tiny", audio_queue=None):
+    """Transcribes audio data from the queue using the Whisper model."""
+    model = whisper.load_model(model_size)
+    transcriptions = []
+    while True:
+        audio = audio_queue.get()
+        if audio is None:
+            break
+        # Transcribe
+        result = model.transcribe(audio.flatten(), fp16=False)
+        print("Transcription:", result["text"])
+        transcriptions.append(result["text"])
+    # After processing is done
+    full_transcription = "\n".join(transcriptions)
+    # Copy to clipboard
+    try:
+        pyperclip.copy(full_transcription)
+        print("Transcription has been copied to the clipboard.")
+    except pyperclip.PyperclipException as e:
+        print(f"Failed to copy transcription to clipboard: {e}")
 
-# Main script flow
 def main():
-    list_microphones()
-    device_index = int(input("Enter the device index for your microphone: "))
-    record_audio(device_index)
-    transcribe_audio()
+    # Create a queue for audio data
+    audio_queue = queue.Queue()
+
+    # Create and start threads
+    record_thread = threading.Thread(target=record_audio, args=(audio_queue,))
+    transcribe_thread = threading.Thread(target=transcribe_audio, args=("tiny", audio_queue))
+
+    record_thread.start()
+    transcribe_thread.start()
+
+    # Wait for threads to finish
+    record_thread.join()
+    transcribe_thread.join()
+
+    print("Transcription complete.")
 
 if __name__ == "__main__":
     main()
-
